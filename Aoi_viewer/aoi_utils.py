@@ -8,6 +8,7 @@ from FRET_kernel import Fret_kernel
 import json
 from dash.exceptions import PreventUpdate
 from Blob import Blob
+from global_state import global_state as gs
 
 def cal(path):
     g_start = 0
@@ -54,10 +55,23 @@ def draw_blobs(fig, coord_list, r, reverse):
                           marker=dict(size=2 * r + 1, line=dict(width=2), color=color),
                           selector=dict(name='blobs_b'))
     except:
-        fig.update_traces(x=[], y=[], marker=dict(size=2 * r + 1, line=dict(width=2)), selector=dict(name='blobs_r'))
-        fig.update_traces(x=[], y=[], marker=dict(size=2 * r + 1, line=dict(width=2)), selector=dict(name='blobs_g'))
-        fig.update_traces(x=[], y=[], marker=dict(size=2 * r + 1, line=dict(width=2)), selector=dict(name='blobs_b'))
+        fig.update_traces(x=[], y=[], marker=dict(size=2 * r + 1, line=dict(width=2)), customdata= [], selector=dict(name='blobs_r'))
+        fig.update_traces(x=[], y=[], marker=dict(size=2 * r + 1, line=dict(width=2)), customdata= [], selector=dict(name='blobs_g'))
+        fig.update_traces(x=[], y=[], marker=dict(size=2 * r + 1, line=dict(width=2)), customdata= [], selector=dict(name='blobs_b'))
     return fig
+
+def update_fret_labels(fig, frame):
+    if np.any(gs.fret_g):
+        fret =  np.round(gs.fret_g[:, int(frame)], 3)
+    else:
+        fret = None
+    fig.update_traces(customdata= fret, selector=dict(name='blobs_r'))
+    fig.update_traces(customdata= fret, selector=dict(name='blobs_g'))
+    return fig
+
+def update_blobs_coords(blob_list, coord_list):
+    for i, b in enumerate(blob_list):
+        b.update_coord(coord_list[i])
 
 def move_blobs(coord_list, selector, step, changed_id):
     if 'up' in changed_id:
@@ -100,6 +114,7 @@ def move_blobs(coord_list, selector, step, changed_id):
         else:
             for i in range(coord_list.shape[0]):
                 coord_list[i][5] += step
+
     return coord_list
 
 def load_path(thres, path, fsc):
@@ -146,7 +161,8 @@ def cal_FRET_utils(path, ps, ow, snap_time_g, snap_time_b, red, red_time, red_in
         'overwrite': ow,
     }
     kernel = Fret_kernel(proc_config)
-    kernel.auto_fret(plot=0, fit=fit, fit_b=fit_b, GFP_plot=GFP_plot, fsc=fsc)
+    fret_g = kernel.auto_fret(plot=0, fit=fit, fit_b=fit_b, GFP_plot=GFP_plot, fsc=fsc)
+    gs.fret_g = fret_g
 
 def save_config(num, config_data):
     os.makedirs(r'configs', exist_ok=True)

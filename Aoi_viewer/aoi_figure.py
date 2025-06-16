@@ -40,6 +40,8 @@ def create_initial_figure(image_g, minf, maxf, radius):
             size=2 * radius + 1,
             line=dict(color='MediumPurple', width=1)
         ),
+        customdata = [],
+        hovertemplate = '<b>No:</b> %{pointNumber}<br>' +  'X value: %{x}<br>' +'Y value: %{y}<br>'+ 'FRET_g: %{customdata}<br>' + '<extra></extra>',
         name='blobs_r'
     )
     fig.add_scatter(
@@ -51,6 +53,8 @@ def create_initial_figure(image_g, minf, maxf, radius):
             size=2 * radius + 1,
             line=dict(color='MediumPurple', width=1)
         ),
+        customdata = [],
+        hovertemplate = '<b>No:</b> %{pointNumber}<br>' +  'X value: %{x}<br>' +'Y value: %{y}<br>' + 'FRET_g: %{customdata}<br>' +'<extra></extra>',
         name='blobs_g'
     )
     fig.add_scatter(
@@ -62,6 +66,7 @@ def create_initial_figure(image_g, minf, maxf, radius):
             size=2 * radius + 1,
             line=dict(color='MediumPurple', width=1)
         ),
+        hovertemplate = '<b>No:</b> %{pointNumber}<br>' +  'X value: %{x}<br>' +'Y value: %{y}<br>' + '<extra></extra>',
         name='blobs_b'
     )
     return fig
