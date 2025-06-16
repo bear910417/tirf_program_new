@@ -2,6 +2,7 @@
 from dash_extensions.enrich import Output, Input, State
 from aoi_utils import cal_FRET_utils
 
+
 def register_cal_FRET(app, fsc):
     @app.callback(
         Output("FRET", "title"),

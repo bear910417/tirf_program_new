@@ -4,10 +4,13 @@ import subprocess
 import time
 import logging
 import plotly.graph_objects as go
+import os
+from tqdm import tqdm
 from dash import callback_context, no_update
 from dash.exceptions import PreventUpdate
 from dash_extensions.enrich import Output, Input, State
-from aoi_utils import draw_blobs, move_blobs, load_path, cal_blob_intensity, save_aoi_utils, load_aoi_utils
+from aoi_utils import draw_blobs, move_blobs, update_blobs_coords, load_path, cal_blob_intensity, save_aoi_utils, load_aoi_utils, update_fret_labels
+from cal_drift import cal_drift
 from global_state import global_state
 
 def register_update_fig(app, fsc):
@@ -38,6 +41,7 @@ def register_update_fig(app, fsc):
             Input("down", "n_clicks"),
             Input("left", "n_clicks"),
             Input("right", "n_clicks"),
+            Input("fit_gauss", "n_clicks"),
             Input("frame_slider", "value"),
             Input("anchor", "value"),
             Input("average_frame", "value"),
@@ -46,6 +50,8 @@ def register_update_fig(app, fsc):
             Input("maxf", "value"),
             Input("reverse", "value"),
             Input("channel", "value"),
+            Input("cal_drift", "n_clicks"),
+            Input("load_drift", "n_clicks"),
             Input("cal_intensity", "n_clicks"),
             Input("openp", "n_clicks"),
             Input("configs", "value"),
@@ -60,22 +66,21 @@ def register_update_fig(app, fsc):
             State("mpath", "value"),
             State("plot_circle", "value"),
             State("thres", "value"),
-            State("snap_time_g", "value"),
-            State("red_time", "value"),
+            State("per_n", "value"),
+            State("pairing_threshold", "value"),
             State("auto", "n_clicks")
         ],
     )
-    def update_fig(clickData, relayout, blob, up, down, left, right, frame, anchor,
-                   average_frame, loadp, minf, maxf, reverse, channel, cal_intensity,
+    def update_fig(clickData, relayout, blob, up, down, left, right, fit_gauss, frame, anchor,
+                   average_frame, loadp, minf, maxf, reverse, channel, cal_drift_bt, load_drift, cal_intensity,
                    openp, configs, aoi_mode, ratio_thres, radius, selector,
-                   move_step, path, mpath, plot, thres, snap_time, red_time, auto):
+                   move_step, path, mpath, plot, thres, per_n, pairing_threshold, auto):
         
         gs = global_state
         current_fig = gs.fig
         step_start = time.perf_counter()
 
         changed_id = [p['prop_id'] for p in callback_context.triggered][0]
-
         
         if "loadp" in changed_id:
             fsc.set("load_progress", "0")
@@ -86,6 +91,12 @@ def register_update_fig(app, fsc):
             logging.info("Image load in %.3f sec", time.perf_counter()-step_start)
             step_start = time.perf_counter()
 
+
+        channel_dict = {
+            "green": gs.image_g if gs.image_g is not None else np.zeros((1,512,512)),
+            "red": gs.image_r if gs.image_r is not None else np.zeros((1,512,512)),
+            "blue": gs.image_b if gs.image_b is not None else np.zeros((1,512,512))
+        }
 
         if "blob" in changed_id:
             fsc.set("progress", 0)
@@ -104,14 +115,67 @@ def register_update_fig(app, fsc):
                 coord_array = np.array(gs.coord_list) if gs.coord_list else np.empty((0,))
                 coord_array = move_blobs(coord_array, selector, int(move_step), changed_id)
                 gs.coord_list = coord_array.tolist()
+                update_blobs_coords(gs.blob_list, coord_array)
+
                 current_fig = draw_blobs(current_fig, coord_array, gs.dr if gs.dr is not None else radius, reverse)
                 logging.info("Movement %s in %.3f sec", move_button, time.perf_counter()-step_start)
                 step_start = time.perf_counter()
+        if 'fit_gauss' in changed_id:
 
+            gs.loader.gen_dimg(anchor = anchor, mpath = mpath, maxf = maxf, minf = minf, laser = channel, average_frame = average_frame)
+            logging.info("BM3D Image Processed in %.3f sec", time.perf_counter()-step_start)
+            step_start = time.perf_counter()
+
+            ch_dict = {
+                'channel_r': 'red',
+                'channel_g': 'green',
+                'channel_b': 'blue'
+            }
+            for b in tqdm(gs.blob_list):
+                b.set_image(gs.loader.dframe_r, laser = 'red')
+                b.set_image(gs.loader.dframe_g, laser = 'green')
+                b.set_image(gs.loader.dframe_b, laser = 'blue')
+                b.gaussian_fit(ch = ch_dict[selector], laser = channel)
+            gs.coord_list = [b.get_coord() for b in gs.blob_list]
+            coord_array = np.array(gs.coord_list) 
+            current_fig = draw_blobs(current_fig, coord_array, gs.dr, reverse)
+            logging.info("Blob fitting for {ch} with {channel} laser in %.3f sec", time.perf_counter()-step_start)
 
         if "openp" in changed_id:
             subprocess.Popen(f'explorer "{path}"')
 
+        if "cal_drift" in changed_id:
+            if gs.loader == None:
+                logging.info("Error: No image loader detected")
+            else:
+                cal_drift(
+                    gs = gs, 
+                    channel_dict = channel_dict, 
+                    fsc = fsc, 
+                    mpath = mpath, 
+                    path = path,
+                    maxf = maxf, 
+                    minf = minf, 
+                    average_frame = average_frame, 
+                    channel = channel, 
+                    per_n = per_n, 
+                    pairing_threshold = pairing_threshold)
+                
+        if "load_drift" in changed_id:
+            if gs.loader == None:
+                logging.info("Error: No image loader detected")
+            else:
+                drifts_dir = os.path.join(path, 'drifts')
+                os.makedirs(drifts_dir, exist_ok=True)
+                for c1, attr in [('g', 'image_g'), ('b', 'image_b'), ('r', 'image_r')]:
+                    try:
+                        warped_image = np.load(os.path.join(drifts_dir, f'warped_{c1}.npy'))
+                        setattr(gs, attr, warped_image)
+                        setattr(gs.loader, attr, warped_image)
+                        logging.info(f"Successfully loaded drift-corrected {attr} .")
+                    except Exception as e:
+                        logging.warning(f"Could not load drift-corrected {attr}: {e}")
+            
         if "cal_intensity" in changed_id:
             fsc.set("cal_progress", 0)
             cal_blob_intensity(gs.loader, np.array(gs.coord_list), path, gs.image_datas, maxf, minf, fsc)
@@ -144,9 +208,12 @@ def register_update_fig(app, fsc):
         # (Undo, Save, Load, Clear AOI logic)
         if aoi_mode == 2:
             aoi_mode = 0
-            if len(gs.rem_hist) > 0:
+            if len(gs.rem_list_blob) > 0:
                 new_coord = np.array(gs.rem_list.pop())
-                combined = np.concatenate((np.array(gs.coord_list), new_coord.reshape(1,12)), axis=0)
+                if np.any(np.array(gs.coord_list)):
+                    combined = np.concatenate((np.array(gs.coord_list), new_coord.reshape(1,12)), axis=0)
+                else:
+                    combined = new_coord.reshape(1,12)
                 gs.coord_list = combined.tolist()
                 gs.blob_list.append(gs.rem_list_blob.pop())
                 current_fig = draw_blobs(current_fig, np.array(gs.coord_list), gs.dr, reverse)
@@ -163,16 +230,13 @@ def register_update_fig(app, fsc):
             logging.info("Loaded AOI")
         if aoi_mode == 5:
             aoi_mode = 0
+            gs.rem_list = gs.rem_list + gs.coord_list
+            gs.rem_list_blob = gs.rem_list_blob + gs.blob_list
             gs.blob_list = []
             gs.coord_list = []
             current_fig = draw_blobs(current_fig, np.empty((0,)), gs.dr, reverse)
             logging.info("Cleared AOI")
         
-        channel_dict = {
-            "green": gs.image_g if gs.image_g is not None else np.zeros((1,512,512)),
-            "red": gs.image_r if gs.image_r is not None else np.zeros((1,512,512)),
-            "blue": gs.image_b if gs.image_b is not None else np.zeros((1,512,512))
-        }
         if "channel" in changed_id:
             if frame > channel_dict[channel].shape[0]:
                 frame = 0
@@ -201,6 +265,7 @@ def register_update_fig(app, fsc):
             minf = np.round(np.min(smooth_image))
             
         current_fig.update_traces(zmax=maxf, zmin=minf, selector=dict(type="heatmap"))
+        current_fig = update_fret_labels(current_fig, frame)
 
 
         slider_max = channel_dict[channel].shape[0]
