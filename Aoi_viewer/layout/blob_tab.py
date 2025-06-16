@@ -57,6 +57,7 @@ def get_blob_tab(config):
                 persistence=True
             ),
         ], style={'padding': 5, 'display': 'flex', 'flex-direction': 'row'}),
+
         html.Div([
             html.Div('Channel'),
             html.Div(
@@ -75,7 +76,24 @@ def get_blob_tab(config):
                 style={'textAlign': 'center', 'width': '80px'}
             ),
             html.Button('Autoscale', id='autoscale', disabled=False),
-            html.Button('Cal Intensity', id='cal_intensity', disabled=True),
+            html.Button('Cal Intensity', id='cal_intensity', disabled=True),   
+        ], style={'padding': 5, 'display': 'flex', 'flex-direction': 'row'}),
+
+        html.Div([
+            html.Button('Calculate Drift', id='cal_drift', disabled=False),
+            html.Button('Load Drift', id='load_drift', disabled=False),
+            html.Div('Interval', style={"margin-left": "10px"}),
+            dcc.Input(
+                value=200, id="per_n", type="number", min=1, step=1,
+                placeholder="per_n", persistence=True,
+                style={'textAlign': 'center', "margin-left": "10px", 'width': '80px'}
+            ),
+            html.Div('Pairing Threshold', style={"margin-left": "10px"}),
+            dcc.Input(
+                value=1.5, id="pairing_threshold", type="number", min=0.1, step=0.1,
+                placeholder="pairing_threshold", persistence=True,
+                style={'textAlign': 'center', "margin-left": "10px", 'width': '60px'}
+            ),
         ], style={'padding': 5, 'display': 'flex', 'flex-direction': 'row'}),
         html.Div([
             html.Div('AOI tools:'),
