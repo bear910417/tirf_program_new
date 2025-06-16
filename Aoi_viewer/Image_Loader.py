@@ -249,7 +249,7 @@ class Image_Loader():
 
             print(f'Calculating r Backgrounds with mode {bac_mode}')
             fsc_anchor = (g_finished + r_finished) / (g_exists + r_exists)  
-            self.bac_r = self.cal_bac_med(image_r, 27, fsc, fsc_anchor, fsc_total) 
+            self.bac_r = self.cal_bac_med(image_r, 27, fsc, fsc_anchor, fsc_total) #smaller
             try:
                 fsc.set("load_progress", '0')
             except:
@@ -398,7 +398,10 @@ class Image_Loader():
 
         print('Finding blobs')      
         blobs_dog = blob_dog(self.dcombined_image, min_sigma= (r-1) /sqrt(2), max_sigma = (r) /sqrt(2), threshold = self.thres, overlap = 0.8, exclude_border = 2)
+        sorted_indices = np.lexsort((blobs_dog[:, 1], blobs_dog[:, 0]))
+        blobs_dog = blobs_dog[sorted_indices]
         print(f'Found {blobs_dog.shape[0]} preliminary blobs')
+
     
 
         if plot == True:
@@ -431,15 +434,21 @@ class Image_Loader():
             b.set_image(self.dframe_b, laser = 'blue')
 
             b.check_max(self.dcombined_image, ratio_thres)
-
+            np.save(self.path + r'\\dcombined_image.npy', self.dcombined_image)
 
 
             if self.r_exists or self.g_exists or self.b_exists:
                 b.gaussian_fit(ch = 'red')
+            elif self.g_exists:
+                b.gaussian_fit(ch = 'red', laser = 'green')
+            elif self.b_exists:
+                b.gaussian_fit(ch = 'red', laser = 'blue')
             
-            if self.g_exists or self.b_exists:
+            if self.g_exists:
                 b.gaussian_fit(ch = 'green')
-
+            elif self.b_exists:
+                b.gaussian_fit(ch = 'green', laser = 'blue')
+    
             if self.b_exists:
                 b.gaussian_fit(ch = 'blue')
 
@@ -676,103 +685,10 @@ class Image_Loader():
                 b_snap[blob_count][2] = self.image_b[:, yr-4:yr+4+1,xr-4:xr+4+1]
              
         
-        np.savez(self.path + r'\blobs.npz', b = b_snap, g = g_snap, r = r_snap, minf = minf, maxf = maxf)
+        np.savez(self.path + r'\blobs.npz', b = b_snap, g = g_snap, r = r_snap, minf = minf, maxf = maxf, yr = yr, xr = xr, yg = yg, xg = xg, yb = yb, xb = xb)
         
         return trace_gg, trace_gr, trace_rr, trace_bb, trace_bg, trace_br, blob_count+1
     
-
-    def cal_intensity_drift(self, coord_list, maxf = 35000, minf = 32946, fsc = None):
-        
-        print('Calcultating Intensities')
-        i=0
-        total_blobs = coord_list['green'].shape[0]
-        trace_gg = np.zeros((total_blobs, int(self.g_length)))
-        trace_gr = np.zeros((total_blobs, int(self.g_length)))
-        trace_rr = np.zeros((total_blobs, int(self.r_length)))
-        trace_bb = np.zeros((total_blobs, int(self.b_length)))
-        trace_bg = np.zeros((total_blobs, int(self.b_length)))
-        trace_br = np.zeros((total_blobs, int(self.b_length)))
-
-        b_snap = np.zeros((total_blobs, 3, self.b_length, 9, 9))
-        g_snap = np.zeros((total_blobs, 2, self.g_length, 9, 9))
-        r_snap = np.zeros((total_blobs, 1, self.r_length, 9, 9))
-
-        if self.g_exists == 1:
-            bac_g = self.bac_g
-            image_g = (self.image_g - bac_g).astype(np.float32)
-        
-        if self.r_exists == 1:
-            bac_r = self.bac_r
-            image_r = (self.image_r - bac_r).astype(np.float32)
-        
-        if self.b_exists == 1:
-            bac_b = self.bac_b
-            image_b = (self.image_b - bac_b).astype(np.float32)
-
-
-        self.cpath=os.path.join(self.path,r'circled')
-        os.makedirs(self.cpath+f'\\{self.n_pro}', exist_ok=True)
-        for blob_count, blob in enumerate(tqdm(coord_list)):
-
-            try:
-                fsc.set("cal_progress", str(blob_count / (len(coord_list)-1)))
-            except:
-                pass
-
-            yr, xr, yg, xg, yb, xb, ymr, xmr, ymg, xmg, ymb, xmb = blob
-            r = 3
-
-            
-            yr = int(yr)
-            xr = int(xr)
-            yg = int(yg)
-            xg = int(xg)
-            yb = int(yb)
-            xb = int(xb)
-
-
-            if self.r_exists ==1:
-                srr = 2 * self.gaussian_peaks(ymr, xmr)
-
-                trace_rr[i]  = np.einsum('tyx, yx -> t', image_r[:, yr-r:yr+r+1,xr-r:xr+r+1], srr, optimize = False) 
-                
-                r_snap[blob_count][0] = self.image_r[:, yr-4:yr+4+1,xr-4:xr+4+1]
-
-
-            if self.g_exists ==1:
-                sgg = 2 * self.gaussian_peaks(ymg, xmg)
-                sgr = 2 * self.gaussian_peaks(ymr, xmr)
-
-                trace_gg[i]  = np.einsum('tyx, yx -> t', image_g[:, yg-r:yg+r+1,xg-r:xg+r+1], sgg, optimize = False)
-                trace_gr[i]  = np.einsum('tyx, yx -> t', image_g[:, yr-r:yr+r+1,xr-r:xr+r+1], sgr, optimize = False) 
-
-                g_snap[blob_count][0] = self.image_g[:, yg-4:yg+4+1,xg-4:xg+4+1]
-                g_snap[blob_count][1] = self.image_g[:, yr-4:yr+4+1,xr-4:xr+4+1]
-
-                    
-              
-            if  self.b_exists == 1:
-                sbb = 2 *self.gaussian_peaks(ymb, xmb)
-                sbg = 2 *self.gaussian_peaks(ymg, xmg)
-                sbr = 2 *self.gaussian_peaks(ymr, xmr)
-
-                trace_bb[i] = np.einsum('tyx, yx -> t', image_b[:, yb-r:yb+r+1,xb-r:xb+r+1], sbb, optimize = False)
-                trace_bg[i] = np.einsum('tyx, yx -> t', image_b[:, yg-r:yg+r+1,xg-r:xg+r+1], sbg, optimize = False)
-                trace_br[i] = np.einsum('tyx, yx -> t', image_b[:, yr-r:yr+r+1,xr-r:xr+r+1], sbr, optimize = False) 
-
-                b_snap[blob_count][0] = self.image_b[:, yb-4:yb+4+1,xb-4:xb+4+1]
-                b_snap[blob_count][1] = self.image_b[:, yg-4:yg+4+1,xg-4:xg+4+1]
-                b_snap[blob_count][2] = self.image_b[:, yr-4:yr+4+1,xr-4:xr+4+1]
-
-            i = i+1
-
-             
-
-
-        np.savez(self.path + r'\blobs.npz', b = b_snap, g = g_snap, r = r_snap, minf = minf, maxf = maxf)
-        
-        return trace_gg, trace_gr, trace_rr, trace_bb, trace_bg, trace_br, i
-        
         
 
         

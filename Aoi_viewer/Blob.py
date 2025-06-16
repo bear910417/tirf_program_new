@@ -2,6 +2,7 @@ import numpy as np
 import lmfit
 import matplotlib.pyplot as plt
 from skimage.feature import peak_local_max
+from skimage.morphology import h_maxima
 
 class Blob():
     
@@ -82,7 +83,7 @@ class Blob():
     def check_max(self, dcombined_image, ratio_thres):
         if self.quality == 0:
             return None
-        r = 4
+        r = 3
         aoi = dcombined_image[self.org_y - r : self.org_y + r + 1, self.org_x  - r : self.org_x + r + 1]
         
         import numpy as np
@@ -141,8 +142,11 @@ class Blob():
             return shape_type, aspect_ratio
                 
         self.aspect_ratio = classify_blob_shape(aoi)[1]
+        h = 60  # h parameter: adjust based on how deep the valley is between peaks
+        h_max = h_maxima(aoi, h)
+        c_num = np.sum(h_max)
         
-        if  self.aspect_ratio > ratio_thres:
+        if  self.aspect_ratio > ratio_thres or c_num > 1:
             self.quality = 0
         
     def set_image(self, image, laser):
@@ -255,9 +259,13 @@ class Blob():
         c = list(self.coords.flatten())
         m = list(self.shift.flatten())
         return c + m
+    
+    def update_coord(self, coords):
+        self.coords = np.array(coords[:len(self.coords.flatten())]).reshape(self.coords.shape)
+        self.shift = np.array(coords[len(self.coords.flatten()):]).reshape(self.shift.shape)
 
 
-        
+            
 
 
 
