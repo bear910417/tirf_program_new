@@ -18,5 +18,6 @@ class GlobalState:
         self.dr = 1
         self.org_size = 1
         self.blob_disable = True
+        self.fret_g = []
 
 global_state = GlobalState()

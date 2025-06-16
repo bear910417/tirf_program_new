@@ -58,3 +58,5 @@ class Fret_kernel:
                     fsc.set("fret_progress", str(1))
                 except:
                     pass
+
+                return fret_g
